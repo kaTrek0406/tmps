@@ -1,177 +1,331 @@
-import tkinter as tk
-from tkinter import ttk, messagebox
+import pygame
+from abc import ABC, abstractmethod
 
-# ------------------------ Классы, реализующие паттерны ------------------------
 
-# Класс Computer представляет конечный продукт.
-class Computer:
-    def __init__(self, name, cpu, gpu, ram, storage, os):
-        self.name = name
-        self.cpu = cpu
-        self.gpu = gpu
-        self.ram = ram
-        self.storage = storage
-        self.os = os
-
-    def __str__(self):
-        return (f"Имя: {self.name}\n"
-                f"Процессор: {self.cpu}\n"
-                f"Графика: {self.gpu}\n"
-                f"ОЗУ: {self.ram}\n"
-                f"Хранилище: {self.storage}\n"
-                f"ОС: {self.os}")
-
-# ------------------------ Builder (Строитель) ------------------------
-class ComputerBuilder:
-    def __init__(self):
-        self.reset()
-
-    def reset(self):
-        self.name = None
-        self.cpu = None
-        self.gpu = None
-        self.ram = None
-        self.storage = None
-        self.os = None
-        return self
-
-    def set_name(self, name):
-        self.name = name
-        return self
-
-    def set_cpu(self, cpu):
-        self.cpu = cpu
-        return self
-
-    def set_gpu(self, gpu):
-        self.gpu = gpu
-        return self
-
-    def set_ram(self, ram):
-        self.ram = ram
-        return self
-
-    def set_storage(self, storage):
-        self.storage = storage
-        return self
-
-    def set_os(self, os):
-        self.os = os
-        return self
-
-    def build(self):
-        computer = Computer(
-            name=self.name,
-            cpu=self.cpu,
-            gpu=self.gpu,
-            ram=self.ram,
-            storage=self.storage,
-            os=self.os
-        )
-        self.reset()  # сброс билдера для нового построения
-        return computer
-
-# ------------------------ Singleton (Одиночка) ------------------------
-class ConfigurationManager:
+# ============================
+# Singleton: Глобальное состояние игры
+# ============================
+class GameStateSingleton:
+    """Класс-синглтон для хранения глобального состояния игры и конфигурации."""
     _instance = None
 
-    def __new__(cls, *args, **kwargs):
-        if not cls._instance:
-            cls._instance = super(ConfigurationManager, cls).__new__(cls)
-            cls._instance.configs = {
-                'gaming': {
-                    'cpu': 'Intel i9',
-                    'gpu': 'NVIDIA RTX 3080',
-                    'ram': '32GB',
-                    'storage': '1TB SSD',
-                    'os': 'Windows 11'
-                },
-                'office': {
-                    'cpu': 'Intel i5',
-                    'gpu': 'Integrated Graphics',
-                    'ram': '16GB',
-                    'storage': '512GB SSD',
-                    'os': 'Windows 10'
-                },
-                'server': {
-                    'cpu': 'AMD EPYC',
-                    'gpu': 'None',
-                    'ram': '64GB',
-                    'storage': '2TB NVMe',
-                    'os': 'Linux'
-                }
-            }
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(GameStateSingleton, cls).__new__(cls)
         return cls._instance
 
-    def get_config(self, type_):
-        return self.configs.get(type_, None)
-
-# ------------------------ Factory Method (Фабричный метод) ------------------------
-class ComputerFactory:
     def __init__(self):
-        self.builder = ComputerBuilder()
-        self.config_manager = ConfigurationManager()
+        # Инициализировать состояние только один раз
+        if not hasattr(self, 'initialized'):
+            self.initialized = True
+            self.score = 0
+            self.level = 1
+            self.current_factory = None
+            # Глобальные настройки (размеры экрана)
+            self.screen_width = 800
+            self.screen_height = 600
 
-    def create_computer(self, type_):
-        config = self.config_manager.get_config(type_)
-        if config is None:
-            raise ValueError(f"Нет конфигурации для типа компьютера '{type_}'")
-        computer = (self.builder
-                    .set_name(type_.capitalize() + " Computer")
-                    .set_cpu(config['cpu'])
-                    .set_gpu(config['gpu'])
-                    .set_ram(config['ram'])
-                    .set_storage(config['storage'])
-                    .set_os(config['os'])
-                    .build())
-        return computer
 
-# ------------------------ UI на tkinter ------------------------
+# ============================
+# Абстрактные базовые классы для игровых объектов
+# ============================
+class Enemy(ABC):
+    """Абстрактный класс для врагов."""
 
-# Функция-обработчик нажатия кнопки «Создать компьютер»
-def create_computer_action():
-    selected_type = computer_type_var.get()
-    try:
-        computer = factory.create_computer(selected_type)
-        result_text.set(str(computer))
-    except Exception as e:
-        messagebox.showerror("Ошибка", str(e))
+    def __init__(self, x, y, color=(255, 0, 0), size=40, speed=2):
+        self.x = x
+        self.y = y
+        self.color = color
+        self.size = size
+        self.speed = speed  # скорость движения по вертикали
+        # Прямоугольник для позиции и коллизий
+        self.rect = pygame.Rect(self.x, self.y, self.size, self.size)
 
-# Создание главного окна приложения
-root = tk.Tk()
-root.title("Создание компьютера")
+    @abstractmethod
+    def update(self):
+        """Обновить позицию врага (определяется в подклассах)."""
+        pass
 
-# Фабрика для создания компьютеров
-factory = ComputerFactory()
+    def draw(self, surface):
+        """Отрисовать врага на заданной поверхности."""
+        pygame.draw.rect(surface, self.color, self.rect)
 
-# Фрейм для выбора типа компьютера
-frame = ttk.Frame(root, padding="10")
-frame.grid(row=0, column=0, sticky=(tk.W, tk.E))
+    def is_off_screen(self, height):
+        """Проверить, вышел ли враг за нижнюю границу экрана."""
+        return self.rect.y > height
 
-# Метка для выбора типа компьютера
-ttk.Label(frame, text="Выберите тип компьютера:").grid(row=0, column=0, padx=5, pady=5)
 
-# Переменная для хранения выбранного типа компьютера
-computer_type_var = tk.StringVar(value='gaming')
+class Bullet(ABC):
+    """Абстрактный класс для пуль/снарядов."""
 
-# Выпадающий список (Combobox) с вариантами
-type_combobox = ttk.Combobox(frame, textvariable=computer_type_var, state="readonly")
-type_combobox['values'] = ('gaming', 'office', 'server')
-type_combobox.grid(row=0, column=1, padx=5, pady=5)
-type_combobox.current(0)  # выбор первого значения по умолчанию
+    def __init__(self, x, y, color=(255, 255, 0), radius=5, speed=5):
+        self.x = x
+        self.y = y
+        self.color = color
+        self.radius = radius
+        self.speed = speed  # скорость по вертикали (отрицательная для движения вверх)
+        # Прямоугольник для коллизий (около центра)
+        self.rect = pygame.Rect(self.x - self.radius, self.y - self.radius, self.radius * 2, self.radius * 2)
 
-# Кнопка для создания компьютера
-create_button = ttk.Button(frame, text="Создать компьютер", command=create_computer_action)
-create_button.grid(row=1, column=0, columnspan=2, pady=10)
+    @abstractmethod
+    def update(self):
+        """Обновить позицию пули (определяется в подклассах)."""
+        pass
 
-# Метка для вывода результата
-result_text = tk.StringVar()
-result_label = ttk.Label(root, textvariable=result_text, padding="10", relief="groove", justify=tk.LEFT)
-result_label.grid(row=1, column=0, padx=10, pady=10, sticky=(tk.W, tk.E))
+    def draw(self, surface):
+        """Отрисовать пулю на заданной поверхности."""
+        pygame.draw.circle(surface, self.color, (self.rect.centerx, self.rect.centery), self.radius)
 
-# Запуск главного цикла обработки событий
-root.mainloop()
-try:
-    root.mainloop()
-except KeyboardInterrupt:
-    print("Приложение завершено пользователем.")
+    def is_off_screen(self, height):
+        """Проверить, вышла ли пуля за границы экрана."""
+        return self.rect.y < 0 or self.rect.y > height
+
+    @abstractmethod
+    def clone(self):
+        """Создать копию этой пули (паттерн Prototype)."""
+        pass
+
+
+# ============================
+# Конкретные классы врагов для разных тем
+# ============================
+class AlienEnemy(Enemy):
+    """Враг в виде инопланетянина (космическая тема)."""
+
+    def __init__(self, x, y):
+        # Зеленый квадрат, движется быстрее вниз
+        super().__init__(x, y, color=(0, 255, 0), size=40, speed=3)
+
+    def update(self):
+        self.rect.y += self.speed
+
+
+class SoldierEnemy(Enemy):
+    """Враг-воин (военная тема)."""
+
+    def __init__(self, x, y):
+        # Серый квадрат, движется чуть медленнее
+        super().__init__(x, y, color=(128, 128, 128), size=40, speed=2)
+
+    def update(self):
+        self.rect.y += self.speed
+
+
+# ============================
+# Конкретные классы пуль для разных тем
+# ============================
+class LaserBullet(Bullet):
+    """Лазерная пуля (космическая тема)."""
+
+    def __init__(self, x, y):
+        # Голубая пуля, движется быстро вверх
+        super().__init__(x, y, color=(0, 255, 255), radius=5, speed=-7)
+
+    def update(self):
+        self.rect.y += self.speed
+
+    def clone(self):
+        # Создаем копию лазерной пули; позиция изначально не важна
+        return LaserBullet(0, 0)
+
+
+class NormalBullet(Bullet):
+    """Обычная пуля (военная тема)."""
+
+    def __init__(self, x, y):
+        # Желтая пуля, движется вверх медленнее лазера
+        super().__init__(x, y, color=(255, 255, 0), radius=5, speed=-5)
+
+    def update(self):
+        self.rect.y += self.speed
+
+    def clone(self):
+        return NormalBullet(0, 0)
+
+
+# ============================
+# Abstract Factory: Создание семейства объектов по теме
+# ============================
+class GameElementFactory(ABC):
+    """Абстрактная фабрика для создания игровых элементов (врагов и пуль)."""
+
+    @abstractmethod
+    def create_enemy(self, x, y):
+        pass
+
+    @abstractmethod
+    def create_bullet(self, x, y):
+        pass
+
+
+class SpaceFactory(GameElementFactory):
+    """Фабрика для космической темы: создает инопланетных врагов и лазерные пули."""
+
+    def __init__(self):
+        # Прототип пули для клонирования (паттерн Prototype)
+        self._bullet_prototype = LaserBullet(0, 0)
+
+    def create_enemy(self, x, y):
+        return AlienEnemy(x, y)
+
+    def create_bullet(self, x, y):
+        new_bullet = self._bullet_prototype.clone()  # клонирование прототипа
+        new_bullet.rect.centerx = x
+        new_bullet.rect.centery = y
+        return new_bullet
+
+
+class ArmyFactory(GameElementFactory):
+    """Фабрика для военной темы: создает солдат-врагов и обычные пули."""
+
+    def __init__(self):
+        self._bullet_prototype = NormalBullet(0, 0)
+
+    def create_enemy(self, x, y):
+        return SoldierEnemy(x, y)
+
+    def create_bullet(self, x, y):
+        new_bullet = self._bullet_prototype.clone()
+        new_bullet.rect.centerx = x
+        new_bullet.rect.centery = y
+        return new_bullet
+
+
+# ============================
+# Класс игрока
+# ============================
+class Player:
+    """Игрок, которым управляет пользователь (стрелок)."""
+
+    def __init__(self, x, y):
+        self.width = 50
+        self.height = 30
+        self.color = (0, 0, 255)  # синий цвет игрока
+        self.rect = pygame.Rect(x, y, self.width, self.height)
+        self.speed = 5  # скорость перемещения
+
+    def move(self, dx, dy, screen_width, screen_height):
+        """Двигаем игрока на dx и dy, не выходя за границы экрана."""
+        self.rect.x += dx
+        self.rect.y += dy
+        if self.rect.x < 0:
+            self.rect.x = 0
+        if self.rect.x + self.width > screen_width:
+            self.rect.x = screen_width - self.width
+        if self.rect.y < 0:
+            self.rect.y = 0
+        if self.rect.y + self.height > screen_height:
+            self.rect.y = screen_height - self.height
+
+    def draw(self, surface):
+        """Отрисовываем игрока на экране."""
+        pygame.draw.rect(surface, self.color, self.rect)
+
+
+# ============================
+# Основной игровой цикл
+# ============================
+def main():
+    pygame.init()
+    state = GameStateSingleton()  # Получаем глобальное состояние через синглтон
+    screen = pygame.display.set_mode((state.screen_width, state.screen_height))
+    pygame.display.set_caption("Shooter Game с паттернами")
+    clock = pygame.time.Clock()
+
+    # Изначально выбираем космическую тему через фабрику
+    state.current_factory = SpaceFactory()
+    state.level = 1
+
+    # Создаем игрока внизу по центру экрана
+    player = Player(state.screen_width // 2 - 25, state.screen_height - 60)
+
+    # Списки для хранения активных врагов и пуль
+    bullets = []
+    enemies = []
+
+    # Событие таймера для появления врагов (каждые 1000 мс)
+    SPAWN_ENEMY = pygame.USEREVENT + 1
+    pygame.time.set_timer(SPAWN_ENEMY, 1000)
+
+    font = pygame.font.SysFont(None, 30)  # Шрифт для отображения счета и уровня
+    running = True
+    while running:
+        dt = clock.tick(60)  # ограничиваем FPS до 60
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            if event.type == SPAWN_ENEMY:
+                # Создаем нового врага в случайной позиции по оси X
+                import random
+                x_pos = random.randint(0, state.screen_width - 40)
+                new_enemy = state.current_factory.create_enemy(x_pos, 0)
+                enemies.append(new_enemy)
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    # Стрельба: создаем пулю в позиции игрока
+                    bullet_x = player.rect.centerx
+                    bullet_y = player.rect.y
+                    new_bullet = state.current_factory.create_bullet(bullet_x, bullet_y)
+                    bullets.append(new_bullet)
+        # Обработка непрерывного нажатия клавиш для движения игрока
+        keys = pygame.key.get_pressed()
+        dx = dy = 0
+        if keys[pygame.K_LEFT]:
+            dx -= player.speed
+        if keys[pygame.K_RIGHT]:
+            dx += player.speed
+        if keys[pygame.K_UP]:
+            dy -= player.speed
+        if keys[pygame.K_DOWN]:
+            dy += player.speed
+        player.move(dx, dy, state.screen_width, state.screen_height)
+
+        # Обновляем врагов
+        for enemy in enemies[:]:
+            enemy.update()
+            if enemy.is_off_screen(state.screen_height):
+                enemies.remove(enemy)
+
+        # Обновляем пули
+        for bullet in bullets[:]:
+            bullet.update()
+            if bullet.is_off_screen(state.screen_height):
+                bullets.remove(bullet)
+
+        # Проверяем столкновения пуль с врагами
+        for enemy in enemies[:]:
+            for bullet in bullets[:]:
+                if enemy.rect.colliderect(bullet.rect):
+                    enemies.remove(enemy)
+                    bullets.remove(bullet)
+                    state.score += 1
+                    if state.level == 1 and state.score >= 5:
+                        state.current_factory = ArmyFactory()
+                        state.level = 2
+                    break
+
+        # Проверяем столкновения врагов с игроком
+        for enemy in enemies[:]:
+            if enemy.rect.colliderect(player.rect):
+                running = False  # Завершаем игру, если враг столкнулся с игроком
+                break
+
+        # Отрисовка игрового экрана
+        screen.fill((0, 0, 0))  # очищаем экран черным фоном
+        player.draw(screen)
+        for enemy in enemies:
+            enemy.draw(screen)
+        for bullet in bullets:
+            bullet.draw(screen)
+        # Отображаем счет и уровень
+        score_text = font.render(f"Score: {state.score}", True, (255, 255, 255))
+        level_text = font.render(f"Level: {state.level}", True, (255, 255, 255))
+        screen.blit(score_text, (10, 10))
+        screen.blit(level_text, (10, 40))
+        pygame.display.flip()
+
+    pygame.quit()
+
+
+if __name__ == "__main__":
+    main()
